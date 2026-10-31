@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../common/ui.css">
+</head>
+<body>
+<div class="panel-root">
+  <div class="side-bar" id="sideBar"></div>
+  <div class="panel-main" id="panelMain">
+    <div class="p-head dragbar">
+      <span class="logo">C便签</span><span class="logo num" id="headBadge">0</span>
+      <span class="spacer" style="flex:1"></span>
+      <button class="hicon" id="btnCal" title="日历月视图"></button>
+      <button class="hicon" id="btnSync" title="本地模式：数据存储在本机"></button>
+      <button class="hicon" id="btnMenu" title="菜单"></button>
+      <span class="hdiv"></span>
+      <button class="hicon" id="btnCollapse" title="折叠面板">⌃</button>
+      <button class="hicon" id="btnHide" title="隐藏到托盘">—</button>
+      <button class="hicon" id="btnQuit" title="退出程序" style="color:#ff8f8f">✕</button>
+    </div>
+
+    <!-- 列表视图 -->
+    <div id="viewList" class="subview">
+      <div class="list-head">
+        <span class="cat-name" id="catName">便签</span>
+        <span class="cnt" id="catCnt">0</span>
+        <span class="spacer"></span>
+        <button class="mini-btn" id="btnFilter">全部 ▾</button>
+      </div>
+      <div class="buy-stats" id="buyStats" style="display:none"></div>
+      <div class="quick-add" id="quickAdd">＋ 新增便签</div>
+      <div class="qa-editor" id="qaEditor" style="display:none">
+        <textarea id="qaText" placeholder="请输入便签内容"></textarea>
+        <div class="qa-tools">
+          <button class="t" id="qaRemind" title="设置提醒">⏰</button>
+          <span id="qaChips" style="display:flex;gap:6px;align-items:center"></span>
+          <span class="spacer"></span>
+          <button class="t" id="qaCancel" title="取消">✕</button>
+          <button class="t" id="qaSave" title="保存" style="color:#7fd4a0">✔</button>
+        </div>
+      </div>
+      <div class="note-list" id="noteList"></div>
+      <div class="p-foot">
+        <button class="fbtn" id="btnTimeline" title="时间轴视图"></button>
+        <button class="fbtn" id="btnSearch" title="搜索"></button>
+        <button class="fbtn" id="btnSettings" title="设置"></button>
+      </div>
+    </div>
+
+    <!-- 日历视图 -->
+    <div id="viewCalendar" class="subview" style="display:none">
+      <div class="calv-head">
+        <button class="mini-btn" id="calBack">‹ 返回</button>
+        <button class="mini-btn nav" id="calPrev">‹</button>
+        <span class="calv-ym" id="calYm">2026年10月</span>
+        <button class="mini-btn nav" id="calNext">›</button>
+        <span class="spacer"></span>
+        <span class="calv-lunar" id="calLunarTag"></span>
+        <button class="mini-btn" id="calMore">⋯</button>
+      </div>
+      <div class="calv-week" id="calWeek"></div>
+      <div class="calv-grid" id="calGrid"></div>
+    </div>
+
+    <!-- 设置视图 -->
+    <div id="viewSettings" class="subview" style="display:none">
+      <div class="calv-head">
+        <button class="mini-btn" id="setBack">‹ 返回</button>
+        <span class="calv-ym">设置</span>
+      </div>
+      <div class="set-scroll">
+        <div class="set-sec">账户</div>
+        <div class="set-row">
+          <div class="avatar" id="setAvatar">追</div>
+          <div class="lb">
+            <input type="text" id="setNick" title="昵称">
+            <div class="sub">本地模式 · 数据存储于本机</div>
+          </div>
+        </div>
+        <div class="set-sec">常规</div>
+        <div class="set-row">
+          <div class="lb">启用操作提示<div class="sub">显示保存、删除等操作的气泡提示</div></div>
+          <div class="switch on" id="swTips"></div>
+        </div>
+        <div class="set-row">
+          <div class="lb">删除前确认<div class="sub">删除内容前弹出确认框</div></div>
+          <div class="switch" id="swConfirm"></div>
+        </div>
+        <div class="set-row">
+          <div class="lb">颜色模式</div>
+          <span id="selColorBox"></span>
+        </div>
+        <div class="set-row">
+          <div class="lb">面板透明度<div class="sub">作用于整个主窗口</div></div>
+          <input type="range" id="opRange" min="30" max="100" style="width:140px">
+        </div>
+        <div class="set-row">
+          <div class="lb">随软件启动<div class="sub">开机后自动在后台启动</div></div>
+          <div class="switch" id="swAuto"></div>
+        </div>
+        <div class="set-sec">帮助和反馈</div>
+        <div class="set-row">
+          <div class="lb">数据同步</div>
+          <button class="btn ghost" id="btnSyncNow" style="font-size:12px">立即同步</button>
+        </div>
+        <div class="set-row" style="border-bottom:0">
+          <div class="lb">关于<div class="sub" id="aboutLine">C便签 v1.0 · Electron 本地版</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="../common/ui.js"></script>
+<script src="panel.js"></script>
+</body>
+</html>

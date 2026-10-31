@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../common/ui.css">
+</head>
+<body>
+<div class="stk-root" id="root">
+  <div class="stk-stripwrap dragbar"><div class="stk-strip" id="strip"></div></div>
+  <div class="stk-head dragbar">
+    <button class="new" id="btnNew" title="新建便签">＋</button>
+    <span class="spacer"></span>
+    <span class="stk-done-tag" id="stkDoneTag" style="display:none">已完成</span>
+    <span class="wb" id="btnSaved" style="cursor:default">✔</span>
+    <button class="wb" id="btnMore" title="更多">···</button>
+    <button class="wb" id="btnClose" title="收起">✕</button>
+  </div>
+  <div class="stk-body" id="body" contenteditable="true" data-ph="记笔记..."></div>
+  <div class="stk-colors" id="colorRow" style="display:none"></div>
+  <div class="stk-tools">
+    <button class="tb" data-cmd="insertUnorderedList" title="项目符号"></button>
+    <button class="tb" data-cmd="bold" title="加粗" style="font-weight:700">B</button>
+    <button class="tb" data-cmd="underline" title="下划线" style="text-decoration:underline">U</button>
+    <button class="tb" data-cmd="strikeThrough" title="删除线" style="text-decoration:line-through">ab</button>
+    <button class="tb" id="btnImg" title="插入图片"></button>
+    <button class="tb" id="btnChecklist" title="清单模式：逐行勾选框"></button>
+  </div>
+</div>
+<input type="file" id="fileInput" accept="image/*" style="display:none">
+<script src="../common/ui.js"></script>
+<script src="sticky.js"></script>
+</body>
+</html>

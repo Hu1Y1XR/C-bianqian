@@ -1,0 +1,18 @@
+{
+  "name": "fusion-notes",
+  "productName": "C便签",
+  "version": "1.0.0",
+  "description": "C便签 · 本地便签/待办/日历应用",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^33.2.0",
+    "png-to-ico": "^3.0.2"
+  },
+  "dependencies": {
+    "lunar-javascript": "^1.7.3"
+  }
+}

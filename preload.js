@@ -1,0 +1,31 @@
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
+
+contextBridge.exposeInMainWorld('api', {
+  load: () => ipcRenderer.invoke('state:load'),
+  lunarMonth: (y, m) => ipcRenderer.invoke('lunar:month', { y, m }),
+  upsertItem: item => ipcRenderer.invoke('item:upsert', item),
+  patchItem: (id, patch) => ipcRenderer.invoke('item:patch', { id, patch }),
+  deleteItem: id => ipcRenderer.invoke('item:delete', id),
+  duplicateItem: id => ipcRenderer.invoke('item:duplicate', id),
+  reorderTodos: (ids) => ipcRenderer.invoke('todo:reorder', { ids }),
+  clearDone: categoryId => ipcRenderer.invoke('todo:clearDone', categoryId),
+  addCategory: (name, kind) => ipcRenderer.invoke('category:add', { name, kind }),
+  renameCategory: (id, name) => ipcRenderer.invoke('category:rename', { id, name }),
+  deleteCategory: id => ipcRenderer.invoke('category:delete', { id }),
+  reorderCategories: ids => ipcRenderer.invoke('category:reorder', { ids }),
+  setSettings: patch => ipcRenderer.invoke('settings:set', patch),
+  addAttachment: p => ipcRenderer.invoke('attachment:add', p),
+  filePath: f => webUtils.getPathForFile(f),
+  openWindow: opts => ipcRenderer.invoke('window:open', opts),
+  closeWin: () => ipcRenderer.invoke('window:close'),
+  reallyCloseWin: () => ipcRenderer.invoke('window:reallyClose'),
+  minWin: () => ipcRenderer.invoke('window:minimize'),
+  resizeWin: (w, h) => ipcRenderer.invoke('window:resize', { w, h }),
+  setMinSize: (w, h) => ipcRenderer.invoke('window:setMinSize', { w, h }),
+  setAlwaysOnTop: flag => ipcRenderer.invoke('window:ontop', flag),
+  setOpacity: v => ipcRenderer.invoke('window:opacity', v),
+  embedDesktop: flag => ipcRenderer.invoke('window:embed', flag),
+  quitApp: () => ipcRenderer.invoke('app:quit'),
+  onState: cb => ipcRenderer.on('state', (e, s) => cb(s)),
+  query: Object.fromEntries(new URLSearchParams(location.search))
+});
