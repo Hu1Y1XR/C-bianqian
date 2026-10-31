@@ -45,7 +45,7 @@ function dueCount() {
   const now = new Date();
   return state.items.filter(it => {
     if (it.done || !it.reminder) return false;
-    return UI.expand(it.reminder, now, 1).includes(UI.ymd(now));
+    return UI.expand(it.reminder, UI.ymd(now), UI.ymd(now)).includes(UI.ymd(now));
   }).length;
 }
 function renderSide() {
@@ -158,12 +158,14 @@ function renderList() {
   const list = $('noteList');
   if (timelineMode) { renderTimeline(items); return; }
   if (isTodoCat) {
+    $('btnClearDone').style.display = items.some(i => i.type === 'todo' && i.done) ? 'inline-block' : 'none';
     const todos = items.filter(i => i.type === 'todo').sort((a, b) => (a.order || 0) - (b.order || 0) || a.createdAt - b.createdAt);
     const notes = items.filter(i => i.type !== 'todo');
     list.innerHTML = todos.map(todoRowHTML).join('') + notes.map(noteItemHTML).join('') ||
       '<div class="empty-tip">清单空空如也<br>点击上方「＋ 新增」添加待办</div>';
     bindTodoEvents(list);
   } else {
+    $('btnClearDone').style.display = 'none';
     // 完成的沉底，其余按更新时间倒序
     const sorted = items.sort((a, b) => ((a.done ? 1 : 0) - (b.done ? 1 : 0)) || ((b.updatedAt || 0) - (a.updatedAt || 0)));
     list.innerHTML = sorted.map(noteItemHTML).join('') || '<div class="empty-tip">暂无内容<br>点击上方「＋ 新增」记录一条吧</div>';
@@ -186,7 +188,7 @@ function noteItemHTML(it) {
       ${it.done
         ? '<div class="bdot-done">✓</div>'
         : `<div class="bdot" style="background:${colorMap[it.color] || colorMap.default}"></div>`}
-      <div class="body">${it.html || ''}</div>
+      <div class="body">${UI.fixAttach(it.html) || ''}</div>
       <div class="time-tag">${UI.fmtTime(it.createdAt || it.updatedAt)}</div>
       ${it.done ? '<span class="done-tag">已完成</span>' : ''}
     </div>${remRow}${att ? `<div class="att-row">${att}</div>` : ''}
@@ -210,7 +212,8 @@ function esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').
 
 function renderTimeline(items) {
   const now = new Date();
-  const withRem = items.filter(i => i.reminder).map(i => ({ i, dates: UI.expand(i.reminder, now, 95) }))
+  const from = UI.ymd(addDays(now, -30)), to = UI.ymd(addDays(now, 95));
+  const withRem = items.filter(i => i.reminder).map(i => ({ i, dates: UI.expand(i.reminder, from, to) }))
     .flatMap(({ i, dates }) => dates.map(d => ({ i, d }))).filter(x => x.d >= UI.ymd(new Date(Date.now() - 30 * 86400e3)))
     .sort((a, b) => (a.d + (a.i.reminder.time || '')).localeCompare(b.d + (b.i.reminder.time || '')));
   if (!withRem.length) { $('noteList').innerHTML = '<div class="empty-tip">暂无提醒事项</div>'; return; }
@@ -412,12 +415,20 @@ async function saveQuickAdd() {
 }
 
 /* ---------- 日历视图 ---------- */
-function calEventsOn(dateStr) {
+function buildEventMap(fromStr, toStr) {
   const now = new Date();
-  const out = state.items.filter(it => it.reminder && UI.expand(it.reminder, now, 95).includes(dateStr));
-  if (calSort === '按提醒') out.sort((a, b) => (a.reminder.time || '').localeCompare(b.reminder.time || ''));
-  else out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  return out;
+  const map = {};
+  for (const it of state.items) {
+    if (!it.reminder) continue;
+    for (const d of UI.expand(it.reminder, fromStr, toStr)) {
+      (map[d] = map[d] || []).push(it);
+    }
+  }
+  for (const d of Object.keys(map)) {
+    if (calSort === '按提醒') map[d].sort((a, b) => (a.reminder.time || '').localeCompare(b.reminder.time || ''));
+    else map[d].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  }
+  return map;
 }
 function chipHTML(it) {
   const colorIdx = ({ default: 0, yellow: 0, green: 1, purple: 2, pink: 3, blue: 1, gray: 6, dark: 6, teal: 5 })[it.color] ?? 0;
@@ -457,11 +468,12 @@ async function renderCalView() {
 
   if (calMode === 'week') {
     const start = weekStart_(weekOffset);
+    const wMap = buildEventMap(UI.ymd(start), UI.ymd(new Date(start.getTime() + 6 * 86400e3)));
     let html = '';
     for (let i = 0; i < 7; i++) {
       const d = new Date(start); d.setDate(d.getDate() + i);
       const ds = UI.ymd(d);
-      html += `<div class="calv-wcol ${ds === todayStr ? 'today' : ''}" data-date="${ds}"><div class="hd">${d.getMonth() + 1}/${d.getDate()} 周${UI.WEEK[d.getDay()]}</div>${calEventsOn(ds).map(chipHTML).join('') || '<div style="text-align:center;color:#4a5a6d;font-size:11px;margin-top:14px">—</div>'}</div>`;
+      html += `<div class="calv-wcol ${ds === todayStr ? 'today' : ''}" data-date="${ds}"><div class="hd">${d.getMonth() + 1}/${d.getDate()} 周${UI.WEEK[d.getDay()]}</div>${(wMap[ds] || []).map(chipHTML).join('') || '<div style="text-align:center;color:#4a5a6d;font-size:11px;margin-top:14px">—</div>'}</div>`;
     }
     $('calGrid').className = 'calv-weekgrid';
     $('calGrid').innerHTML = html;
@@ -477,6 +489,7 @@ async function renderCalView() {
   const first = new Date(y, m - 1, 1);
   const ws0 = state.settings.weekStart === 0 ? 0 : 1;
   const lead = (first.getDay() - ws0 + 7) % 7;
+  const evMap = buildEventMap(UI.ymd(new Date(y, m - 1, 1 - 7)), UI.ymd(new Date(y, m, 0 + 7)));
   const rendering = [];
   const prevLast = new Date(y, m - 1, 0).getDate();
   for (let i = lead; i > 0; i--) rendering.push({ d: prevLast - i + 1, other: true, pm: true });
@@ -500,7 +513,7 @@ async function renderCalView() {
         else if (ld.monthTag) lunarTxt = ld.monthTag;
         else lunarTxt = ld.lunarDay;
       }
-      const evs = calEventsOn(dateStr).slice(0, 3);
+      const evs = (evMap[dateStr] || []).slice(0, 3);
       html += `<div class="calv-cell ${cell.other ? 'other' : ''} ${dateStr === todayStr ? 'today' : ''}" data-date="${dateStr}">
         <span class="dnum">${cell.d}</span>${lunarTxt ? `<span class="lunar ${lunarCls}">${lunarTxt}</span>` : ''}
         ${evs.map(chipHTML).join('')}
@@ -563,6 +576,7 @@ function showOpacityPop(x, y) {
 /* ---------- 设置视图 ---------- */
 function fillSettings() {
   const s = state.settings;
+  renderTrash();
   $('setNick').value = s.nickname || '追梦人';
   $('setAvatar').textContent = (s.nickname || '追')[0];
   $('swTips').classList.toggle('on', !!s.tips);
@@ -576,6 +590,29 @@ function fillSettings() {
     ], v => api.setSettings({ colorMode: v })));
   }
   $('opRange').value = s.transparency ?? 95;
+}
+function renderTrash() {
+  const box = $('trashList');
+  if (!box) return;
+  if (!state.trash.length) { box.innerHTML = '<div class="set-row" style="border-bottom:0"><div class="lb sub">回收站是空的</div></div>'; return; }
+  box.innerHTML = state.trash.slice().reverse().map(t => {
+    const it = t.item;
+    const txt = esc(it.type === 'todo' ? it.text : UI.plainText(it.html || '')) || '（空）';
+    const time = new Date(t.deletedAt);
+    return `<div class="set-row"><div class="lb" style="min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${txt}</div><div class="sub">${time.getMonth() + 1}/${time.getDate()} ${UI.pad2(time.getHours())}:${UI.pad2(time.getMinutes())} 删除</div></div>
+      <button class="btn ghost" style="font-size:11px;padding:3px 10px" data-restore="${t.deletedAt}">恢复</button>
+      <button class="btn ghost" style="font-size:11px;padding:3px 10px;color:#ff8f8f" data-purge="${t.deletedAt}">彻底删除</button></div>`;
+  }).join('');
+  box.querySelectorAll('[data-restore]').forEach(b => b.onclick = async () => {
+    const r = await api.trashRestore(Number(b.dataset.restore));
+    UI.toast(r && r.error ? r.error : '已恢复');
+  });
+  box.querySelectorAll('[data-purge]').forEach(b => b.onclick = async () => {
+    if (await UI.confirmBox('彻底删除这条内容？附件文件将一并删除，不可恢复。')) {
+      const r = await api.trashPurge(Number(b.dataset.purge));
+      UI.toast(r && r.error ? r.error : '已彻底删除');
+    }
+  });
 }
 function bindSettingsView() {
   $('setNick').onchange = async () => {
@@ -592,6 +629,11 @@ function bindSettingsView() {
     await api.setSettings({ transparency: v });
   };
   $('btnSyncNow').onclick = () => UI.toast('已同步！（本地模式）');
+  const tc = $('btnTrashClear');
+  if (tc) tc.onclick = async () => {
+    if (!state.trash.length) { UI.toast('回收站是空的'); return; }
+    if (await UI.confirmBox('清空回收站？其中附件文件将一并删除。')) { await api.trashClear(); UI.toast('已清空'); }
+  };
 }
 
 /* ---------- 头部/底部 ---------- */
@@ -642,7 +684,11 @@ function bindChrome() {
       { label: '日历月视图', icon: '📅', action: () => switchView('calendar') },
       { label: '设置', icon: '⚙', action: () => switchView('settings') },
       'sep',
-      { label: '窗口置顶', checked: true, action: () => {} },
+      { label: '窗口置顶', checked: !!state.settings.alwaysOnTop, action: () => {
+        const v = !state.settings.alwaysOnTop;
+        api.setSettings({ alwaysOnTop: v });
+        api.setAlwaysOnTop(v);
+      } },
     ], r.left - 140, r.bottom + 4);
   };
   $('btnSync').onclick = () => UI.toast('本地模式：数据保存在本机，无需联网');
@@ -665,6 +711,10 @@ function bindChrome() {
     inp.onkeydown = e => { if (e.key === 'Escape') { box.remove(); searchKey = ''; render(); } };
   };
   $('btnTimeline').onclick = () => { timelineMode = !timelineMode; render(); UI.toast(timelineMode ? '时间轴视图' : '列表视图'); };
+  $('btnClearDone').onclick = async () => {
+    if (curCatId.startsWith('#')) return;
+    if (await UI.confirmBox('清除该分类下所有已完成的待办？')) await api.clearDone(curCatId);
+  };
   $('btnSettings').onclick = () => switchView('settings');
   $('quickAdd').onclick = openQuickAdd;
   $('qaCancel').onclick = closeQuickAdd;

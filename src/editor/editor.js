@@ -28,7 +28,7 @@ async function init() {
       $('edTitle').textContent = editing.type === 'todo' ? '编辑待办' : '编辑便签';
       draftType = editing.type;
       if (draftType === 'todo') { body.contentEditable = 'plaintext-only'; body.innerText = editing.text; }
-      else body.innerHTML = editing.html || '';
+      else body.innerHTML = UI.fixAttach(editing.html || '');
       UI.checklist.normalize(body);
       reminder = editing.reminder ? JSON.parse(JSON.stringify(editing.reminder)) : null;
       attachments = (editing.attachments || []).slice();
@@ -183,7 +183,7 @@ async function handleFiles(files) {
     if (!saved || !saved.path) continue;
     if (/\.(png|jpe?g|gif|bmp|webp)$/i.test(saved.name)) {
       body.focus();
-      document.execCommand('insertHTML', false, `<img src="${encodeURI('file:///' + saved.path.replace(/\\/g, '/'))}">`);
+      document.execCommand('insertHTML', false, `<img src="attach://${encodeURIComponent(saved.name)}">`);
     } else {
       attachments.push({ name: saved.name, path: saved.path });
     }
@@ -193,7 +193,13 @@ async function handleFiles(files) {
 function renderAtt() {
   $('attList').innerHTML = attachments.map((a, i) =>
     `<span class="chip remind" style="background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.15);color:#9fb1c3">📎 ${esc(a.name)} <span class="x" data-i="${i}">✕</span></span>`).join('');
-  $('attList').querySelectorAll('.x').forEach(x => x.onclick = () => { attachments.splice(+x.dataset.i, 1); renderAtt(); });
+  $('attList').querySelectorAll('.x').forEach(x => x.onclick = () => {
+    const i = +x.dataset.i;
+    const att = attachments[i];
+    if (att && att.name) api.deleteAttachment(att.name);
+    attachments.splice(i, 1);
+    renderAtt();
+  });
 }
 function esc(s) { return (s || '').replace(/</g, '&lt;'); }
 function dropText() { return attachments.length ? '继续拖拽或点击添加文件' : '拖拽或添加文件'; }

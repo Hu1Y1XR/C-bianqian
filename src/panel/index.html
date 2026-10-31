@@ -25,6 +25,7 @@
       <div class="list-head">
         <span class="cat-name" id="catName">便签</span>
         <span class="cnt" id="catCnt">0</span>
+        <button class="mini-btn" id="btnClearDone" style="display:none">清已完成</button>
         <span class="spacer"></span>
         <button class="mini-btn" id="btnFilter">全部 ▾</button>
       </div>
@@ -99,6 +100,8 @@
           <div class="lb">随软件启动<div class="sub">开机后自动在后台启动</div></div>
           <div class="switch" id="swAuto"></div>
         </div>
+        <div class="set-sec">回收站 <button class="btn ghost" id="btnTrashClear" style="font-size:11px;padding:3px 10px">清空回收站</button></div>
+        <div id="trashList"></div>
         <div class="set-sec">帮助和反馈</div>
         <div class="set-row">
           <div class="lb">数据同步</div>
@@ -111,6 +114,7 @@
     </div>
   </div>
 </div>
+<script src="../common/recur.js"></script>
 <script src="../common/ui.js"></script>
 <script src="panel.js"></script>
 </body>

@@ -15,6 +15,10 @@ contextBridge.exposeInMainWorld('api', {
   reorderCategories: ids => ipcRenderer.invoke('category:reorder', { ids }),
   setSettings: patch => ipcRenderer.invoke('settings:set', patch),
   addAttachment: p => ipcRenderer.invoke('attachment:add', p),
+  deleteAttachment: name => ipcRenderer.invoke('attachment:delete', name),
+  trashRestore: deletedAt => ipcRenderer.invoke('trash:restore', deletedAt),
+  trashPurge: deletedAt => ipcRenderer.invoke('trash:purge', deletedAt),
+  trashClear: () => ipcRenderer.invoke('trash:clear'),
   filePath: f => webUtils.getPathForFile(f),
   openWindow: opts => ipcRenderer.invoke('window:open', opts),
   closeWin: () => ipcRenderer.invoke('window:close'),
@@ -24,7 +28,6 @@ contextBridge.exposeInMainWorld('api', {
   setMinSize: (w, h) => ipcRenderer.invoke('window:setMinSize', { w, h }),
   setAlwaysOnTop: flag => ipcRenderer.invoke('window:ontop', flag),
   setOpacity: v => ipcRenderer.invoke('window:opacity', v),
-  embedDesktop: flag => ipcRenderer.invoke('window:embed', flag),
   quitApp: () => ipcRenderer.invoke('app:quit'),
   onState: cb => ipcRenderer.on('state', (e, s) => cb(s)),
   query: Object.fromEntries(new URLSearchParams(location.search))

@@ -1,6 +1,7 @@
 /* ================= 便签小窗（深色玻璃 + 色条） ================= */
 let item = null;
 let saveTimer = null;
+let topFlag = false;
 const $ = id => document.getElementById(id);
 const body = $('body');
 const COLORS = [
@@ -20,12 +21,12 @@ async function init() {
   }
   injectIcons();
   applyColor(item.color || 'yellow');
-  body.innerHTML = item.html || '';
+  body.innerHTML = UI.fixAttach(item.html || '');
   UI.checklist.normalize(body);
   applyDone();
   api.onState(s => {
     const fresh = s.items.find(x => x.id === item.id);
-    if (fresh && fresh.html !== body.innerHTML && document.activeElement !== body) body.innerHTML = fresh.html || '';
+    if (fresh && fresh.html !== body.innerHTML && document.activeElement !== body) body.innerHTML = UI.fixAttach(fresh.html || '');
     if (fresh && fresh.done !== item.done) { item.done = fresh.done; applyDone(); }
     if (!fresh) window.close();
   });
@@ -64,7 +65,8 @@ function save() {
   clearTimeout(saveTimer);
   $('btnSaved').textContent = '···';
   saveTimer = setTimeout(async () => {
-    await api.upsertItem(JSON.parse(JSON.stringify({ ...item, html: body.innerHTML, color: item.color || 'yellow' })));
+    // 只提交本窗口负责的字段，避免覆盖主面板对分类/提醒等字段的修改
+    await api.patchItem(item.id, { html: body.innerHTML, color: item.color || 'yellow' });
     $('btnSaved').textContent = '✔';
   }, 500);
 }
@@ -96,7 +98,7 @@ function bind() {
     const saved = await api.addAttachment(p);
     if (saved && saved.path) {
       body.focus();
-      document.execCommand('insertHTML', false, `<img src="${encodeURI('file:///' + saved.path.replace(/\\/g, '/'))}">`);
+      document.execCommand('insertHTML', false, `<img src="attach://${encodeURIComponent(saved.name)}">`);
       save();
     }
     $('fileInput').value = '';
@@ -111,7 +113,7 @@ function bind() {
       const saved = await api.addAttachment(p);
       if (saved && saved.path) {
         if (/\.(png|jpe?g|gif|bmp|webp)$/i.test(saved.name)) {
-          document.execCommand('insertHTML', false, `<img src="${encodeURI('file:///' + saved.path.replace(/\\/g, '/'))}">`);
+          document.execCommand('insertHTML', false, `<img src="attach://${encodeURIComponent(saved.name)}">`);
         } else {
           document.execCommand('insertHTML', false, `<div>📎 ${saved.name}</div>`);
         }
@@ -134,6 +136,7 @@ function bind() {
     UI.showMenu([
       { label: '便签颜色', icon: '🎨', sub: COLORS.map(c => ({ label: c.name, checked: cur === c.key, action: () => { item.color = c.key; applyColor(c.key); save(); } })) },
       { label: '便签列表', icon: '☰', action: () => api.openWindow({ type: 'main' }) },
+      { label: '窗口置顶', icon: '📌', checked: !!topFlag, action: () => { topFlag = !topFlag; api.setAlwaysOnTop(topFlag); } },
       'sep',
       { label: '删除笔记', icon: '🗑', danger: true, action: async () => { await api.deleteItem(item.id); UI.toast('已删除'); api.reallyCloseWin(); } },
     ], r.left - 130, r.bottom + 6);

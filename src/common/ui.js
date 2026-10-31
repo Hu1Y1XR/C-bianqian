@@ -88,41 +88,12 @@
     });
   }
 
-  /* 提醒展开（与 main.js 保持一致） */
+  /* 提醒展开：统一委托 src/common/recur.js（区间签名），页面需先加载 recur.js */
+  const R = window.Recur;
   function pad2(n) { return String(n).padStart(2, '0'); }
   function ymd(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
-  function expand(r, ref, horizon = 95) {
-    if (!r || !r.date) return [];
-    const out = [];
-    const start = new Date(r.date + 'T00:00:00');
-    const end = new Date(ref); end.setDate(end.getDate() + horizon); end.setHours(23, 59, 59);
-    const cap = r.endDate ? new Date(r.endDate + 'T23:59:59') : end;
-    if (!r.repeat || r.repeat === 'none') { if (start <= cap) out.push(r.date); return [...new Set(out)].sort(); }
-    if (r.repeat === 'day') {
-      for (let d = new Date(start); d <= end && d <= cap; d.setDate(d.getDate() + 1)) out.push(ymd(d));
-    } else if (r.repeat === 'week') {
-      const wd = (r.repeatWeekdays && r.repeatWeekdays.length) ? r.repeatWeekdays : [start.getDay()];
-      for (let d = new Date(start); d <= end && d <= cap; d.setDate(d.getDate() + 1)) if (wd.includes(d.getDay())) out.push(ymd(d));
-    } else if (r.repeat === 'month') {
-      const days = (r.repeatDays && r.repeatDays.length) ? r.repeatDays : [start.getDate()];
-      const every = r.repeatEvery || 1;
-      let cur = new Date(start.getFullYear(), start.getMonth(), 1);
-      while (cur <= end) {
-        for (const day of days) {
-          const dt = new Date(cur.getFullYear(), cur.getMonth(), day);
-          if (dt >= start && dt <= end && dt <= cap) out.push(ymd(dt));
-        }
-        cur.setMonth(cur.getMonth() + every);
-      }
-    } else if (r.repeat === 'year') {
-      for (let y = start.getFullYear(); y <= end.getFullYear(); y++) {
-        const dt = new Date(y, start.getMonth(), start.getDate());
-        if (dt >= start && dt <= end && dt <= cap) out.push(ymd(dt));
-      }
-    }
-    return [...new Set(out)].sort();
-  }
   const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
+  const fixAttach = html => String(html || '').replace(/(src=")file:\/\/\/[^"]*?\/attachments\//g, '$1attach://');
   function weekdayCN(dateStr) { return '周' + WEEK[new Date(dateStr + 'T00:00:00').getDay()]; }
   function repeatText(r) {
     if (!r || !r.repeat || r.repeat === 'none') return '';
@@ -308,5 +279,5 @@
     }
   };
 
-  window.UI = { showMenu, closeMenu, toast, confirmBox, promptBox, dropdown, ICONS, checklist, expand, weekdayCN, repeatText, fmtTime, plainText, uid, pad2, ymd, WEEK };
+  window.UI = { showMenu, closeMenu, toast, confirmBox, promptBox, dropdown, ICONS, checklist, expand: (r, f, t) => R.expand(r, f, t), fixAttach, weekdayCN, repeatText, fmtTime, plainText, uid, pad2, ymd, WEEK };
 })();
