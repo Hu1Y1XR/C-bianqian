@@ -13,6 +13,7 @@ let weekOffset = 0;
 let calSort = '按提醒';
 
 const $ = id => document.getElementById(id);
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 
 async function init() {
   state = await api.load();

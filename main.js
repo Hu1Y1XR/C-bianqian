@@ -63,6 +63,7 @@ function defaultState() {
 }
 
 let state = null;
+let lastPersistTs = 0;
 
 function tryLoadJson(p) {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; }
@@ -123,7 +124,13 @@ function attPathByName(name) {
   if (!name || /[\\/]/.test(name) || name.includes('..')) return null;
   const p = path.join(ATT_DIR(), name);
   if (!p.startsWith(ATT_DIR())) return null;
-  return p;
+  if (fs.existsSync(p)) return p;
+  // 旧数据兼容：条目里存原始文件名，磁盘名是 uuid_原名
+  try {
+    const hit = fs.readdirSync(ATT_DIR()).find(f => f.endsWith('_' + name));
+    if (hit) return path.join(ATT_DIR(), hit);
+  } catch (e) {}
+  return null;
 }
 function moveToTrashFile(name) {
   const p = attPathByName(name);
@@ -172,7 +179,7 @@ function checkReminders() {
         const key = it.id + '@' + d + 'T' + (r.time || '09:00');
         if (!state.fired[key]) {
           state.fired[key] = Date.now(); changed = true;
-          fireNotification(it, dt);
+          fireNotification(it, dt, dt < Date.now() - 60e3);
         }
       }
     }
@@ -182,14 +189,15 @@ function checkReminders() {
   for (const k of Object.keys(state.fired)) if (state.fired[k] < week) { delete state.fired[k]; changed = true; }
   state.lastCheck = now;
   if (changed) sync();
-  else if (now - (state.__lastPersist || 0) > 10 * 60e3) { state.__lastPersist = now; persist(); }
+  else if (now - lastPersistTs > 10 * 60e3) { lastPersistTs = now; persist(); }
 }
-function fireNotification(it, dt) {
+function fireNotification(it, dt, late) {
   const text = it.type === 'todo' ? it.text : String(it.html || '').replace(/<[^>]+>/g, ' ').trim();
   const rep = r => ({ none: '', day: '每天', week: '每周', month: '每月', year: '每年' }[r] || '');
+  const lateTag = late ? '（补发）' : '';
   const n = new Notification({
     title: (it.reminder.important ? '⭐ 重要事项提醒' : 'C便签提醒') + ' ' + (dt.getHours() + ':' + pad(dt.getMinutes())),
-    body: text.slice(0, 120) + (rep(it.reminder.repeat) ? '（' + rep(it.reminder.repeat) + '）' : '') + '（补发）',
+    body: text.slice(0, 120) + (rep(it.reminder.repeat) ? '（' + rep(it.reminder.repeat) + '）' : '') + lateTag,
     icon: path.join(__dirname, 'tray.png'),
     silent: false
   });
@@ -241,10 +249,11 @@ function showMain() {
 function showMainView(view) {
   showMain();
   const mw = winMap.get('main');
-  if (mw) {
-    mw.webContents.executeJavaScript(`typeof switchView === 'function' && switchView(${JSON.stringify(view)}); 1`)
-      .catch(() => {});
-  }
+  if (!mw) return;
+  const js = `typeof switchView === 'function' && switchView(${JSON.stringify(view)}); 1`;
+  const run = () => { try { mw.webContents.executeJavaScript(js); } catch (e) {} };
+  if (mw.webContents.isLoading()) mw.webContents.once('did-finish-load', run);
+  else run();
 }
 
 /* 边缘吸附：拖到屏幕四边 26px 内自动吸贴合（仅折叠态主面板 / 便签小窗） */
@@ -303,20 +312,20 @@ ipcMain.handle('item:patch', (e, { id, patch }) => {
   }
   sync(); return true;
 });
+function deleteItemInternal(it) {
+  // 进回收站（条目 + 附件文件移入 .trash，可整体恢复）
+  state.trash.push({ item: JSON.parse(JSON.stringify(it)), deletedAt: Date.now() });
+  for (const n of itemAttachmentNames(it)) moveToTrashFile(n);
+  if (state.trash.length > 50) {
+    const old = state.trash.shift();
+    for (const n of itemAttachmentNames(old.item)) purgeTrashFile(n);
+  }
+  state.items = state.items.filter(x => x.id !== it.id);
+  for (const k of Object.keys(state.fired)) if (k.startsWith(it.id + '@')) delete state.fired[k];
+}
 ipcMain.handle('item:delete', (e, id) => {
   const it = state.items.find(x => x.id === id);
-  if (it) {
-    // 进回收站（条目 + 附件文件移入 .trash，可整体恢复）
-    state.trash.push({ item: JSON.parse(JSON.stringify(it)), deletedAt: Date.now() });
-    const names = itemAttachmentNames(it);
-    for (const n of names) moveToTrashFile(n);
-    if (state.trash.length > 50) {
-      const old = state.trash.shift();
-      for (const n of itemAttachmentNames(old.item)) purgeTrashFile(n);
-    }
-    state.items = state.items.filter(x => x.id !== id);
-    for (const k of Object.keys(state.fired)) if (k.startsWith(id + '@')) delete state.fired[k];
-  }
+  if (it) deleteItemInternal(it);
   sync(); return true;
 });
 ipcMain.handle('item:duplicate', (e, id) => {
@@ -331,7 +340,8 @@ ipcMain.handle('todo:reorder', (e, { ids }) => {
   sync(); return true;
 });
 ipcMain.handle('todo:clearDone', (e, categoryId) => {
-  state.items = state.items.filter(x => !(x.type === 'todo' && x.categoryId === categoryId && x.done));
+  const done = state.items.filter(x => x.type === 'todo' && x.categoryId === categoryId && x.done);
+  for (const it of done) deleteItemInternal(it); // 与单条删除一致，进回收站可恢复
   sync(); return true;
 });
 ipcMain.handle('category:add', (e, { name, kind }) => {
@@ -390,8 +400,14 @@ ipcMain.handle('trash:restore', (e, deletedAt) => {
   const idx = state.trash.findIndex(x => x.deletedAt === deletedAt);
   if (idx < 0) return { error: '条目不存在' };
   const entry = state.trash[idx];
-  state.items.push(entry.item);
-  for (const n of itemAttachmentNames(entry.item)) restoreFromTrashFile(n);
+  const it = entry.item;
+  // 原分类可能已被删除：缺失则落到同类型第一个分类
+  if (!state.categories.some(c => c.id === it.categoryId)) {
+    const fb = state.categories.find(c => c.kind === it.type) || state.categories[0];
+    if (fb) it.categoryId = fb.id;
+  }
+  state.items.push(it);
+  for (const n of itemAttachmentNames(it)) restoreFromTrashFile(n);
   state.trash.splice(idx, 1);
   sync(); return { ok: true };
 });
@@ -464,7 +480,7 @@ if (!gotLock) { app.quit(); } else {
     try { protocol.handle('attach', handleAttachRequest); } catch (err) { console.error('attach protocol fail', err); }
     loadState();
     createTray();
-    if (!process.env.FUSION_DEMO && !app.isPackaged) createWin('main');
+    if (!process.env.FUSION_DEMO) createWin('main');
     setInterval(checkReminders, 15000);
     setTimeout(checkReminders, 5000);
     // FUSION_DEMO=1 时自动演示各视图（仅开发环境用于自动化验证，打包后永不激活）
@@ -476,6 +492,7 @@ if (!gotLock) { app.quit(); } else {
       };
       setTimeout(() => createWin('main', { x: 430, y: 50 }), 800);
       setTimeout(() => run("switchView('list'); curCatId = 'c_gouwu'; render(); 'gouwu'"), 3000);
+
 
     }
     app.on('before-quit', () => { try { persist(); } catch (e) {} });

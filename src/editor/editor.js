@@ -7,6 +7,7 @@ let color = 'default';
 let done = false;
 let draftType = 'note';
 let edCatId = '';
+let pendingDel = []; // 待删除的附件名，保存成功后统一落盘删除
 const $ = id => document.getElementById(id);
 const body = $('body');
 const COLORS = [
@@ -196,7 +197,7 @@ function renderAtt() {
   $('attList').querySelectorAll('.x').forEach(x => x.onclick = () => {
     const i = +x.dataset.i;
     const att = attachments[i];
-    if (att && att.name) api.deleteAttachment(att.name);
+    if (att && att.name) pendingDel.push(att.name); // 延迟删盘：保存成功后才删，取消编辑不丢文件
     attachments.splice(i, 1);
     renderAtt();
   });
@@ -232,10 +233,12 @@ async function saveOne(keepOpen) {
   const item = collect();
   if (!item) { UI.toast('请输入内容'); return; }
   await api.upsertItem(JSON.parse(JSON.stringify(item)));
+  for (const name of pendingDel) api.deleteAttachment(name);
+  pendingDel = [];
   UI.toast('保存成功');
   if (keepOpen) {
     editing = null;
-    body.innerHTML = ''; attachments = []; reminder = null; renderChips(); renderAtt(); count();
+    body.innerHTML = ''; attachments = []; pendingDel = []; reminder = null; renderChips(); renderAtt(); count();
   } else {
     api.reallyCloseWin();
   }
