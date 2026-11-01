@@ -161,6 +161,12 @@ function itemAttachmentNames(it) {
   }
   return [...names];
 }
+/* 引用计数：name 是否被除 exceptId 之外的条目（含回收站内）引用
+   「复制本条」会共享同一附件文件，删除/淘汰/清理前必须检查，否则复制品当场裂图 */
+function referencedByOther(name, exceptId) {
+  return state.items.some(it => it.id !== exceptId && itemAttachmentNames(it).includes(name)) ||
+    state.trash.some(t => t.item.id !== exceptId && itemAttachmentNames(t.item).includes(name));
+}
 
 /* ---------------- 提醒（支持离线补发） ---------------- */
 function checkReminders() {
@@ -313,12 +319,16 @@ ipcMain.handle('item:patch', (e, { id, patch }) => {
   sync(); return true;
 });
 function deleteItemInternal(it) {
-  // 进回收站（条目 + 附件文件移入 .trash，可整体恢复）
+  // 进回收站（条目 + 附件文件移入 .trash，可整体恢复）；仍被其他条目引用的文件留在原地
   state.trash.push({ item: JSON.parse(JSON.stringify(it)), deletedAt: Date.now() });
-  for (const n of itemAttachmentNames(it)) moveToTrashFile(n);
+  for (const n of itemAttachmentNames(it)) {
+    if (!referencedByOther(n, it.id)) moveToTrashFile(n);
+  }
   if (state.trash.length > 50) {
     const old = state.trash.shift();
-    for (const n of itemAttachmentNames(old.item)) purgeTrashFile(n);
+    for (const n of itemAttachmentNames(old.item)) {
+      if (!referencedByOther(n, old.item.id)) purgeTrashFile(n);
+    }
   }
   state.items = state.items.filter(x => x.id !== it.id);
   for (const k of Object.keys(state.fired)) if (k.startsWith(it.id + '@')) delete state.fired[k];
@@ -390,9 +400,10 @@ ipcMain.handle('attachment:add', (e, srcPath) => {
     return { name: path.basename(dest), path: dest };
   } catch (err) { return { error: String(err) }; }
 });
-ipcMain.handle('attachment:delete', (e, name) => {
+ipcMain.handle('attachment:delete', (e, { name, exceptId }) => {
+  if (referencedByOther(name, exceptId)) return { ok: true, skipped: true }; // 仍被引用，只解除自身引用关系
   const p = attPathByName(name);
-  if (!p || !fs.existsSync(p)) return { ok: false, error: '文件不存在' };
+  if (!p || !fs.existsSync(p)) return { ok: true }; // 已不存在视为成功
   try { fs.rmSync(p); return { ok: true }; } catch (err) { return { ok: false, error: String(err) }; }
 });
 /* 回收站 */
@@ -415,12 +426,16 @@ ipcMain.handle('trash:purge', (e, deletedAt) => {
   const idx = state.trash.findIndex(x => x.deletedAt === deletedAt);
   if (idx < 0) return { error: '条目不存在' };
   const entry = state.trash[idx];
-  for (const n of itemAttachmentNames(entry.item)) purgeTrashFile(n);
+  for (const n of itemAttachmentNames(entry.item)) {
+    if (!referencedByOther(n, entry.item.id)) purgeTrashFile(n);
+  }
   state.trash.splice(idx, 1);
   sync(); return { ok: true };
 });
 ipcMain.handle('trash:clear', () => {
-  for (const entry of state.trash) for (const n of itemAttachmentNames(entry.item)) purgeTrashFile(n);
+  for (const entry of state.trash) for (const n of itemAttachmentNames(entry.item)) {
+    if (!referencedByOther(n, entry.item.id)) purgeTrashFile(n);
+  }
   state.trash = [];
   sync(); return { ok: true };
 });

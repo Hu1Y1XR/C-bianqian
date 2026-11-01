@@ -279,5 +279,51 @@
     }
   };
 
-  window.UI = { showMenu, closeMenu, toast, confirmBox, promptBox, dropdown, ICONS, checklist, expand: (r, f, t) => R.expand(r, f, t), fixAttach, weekdayCN, repeatText, fmtTime, plainText, uid, pad2, ymd, WEEK };
+  /* 粘贴清洗：只放行白名单标签，img 仅限 attach:/data:，a 仅限 http(s)，其余降级为纯文本 */
+  function sanitizeHtml(html) {
+    const tpl = document.createElement('div');
+    tpl.innerHTML = String(html || '');
+    const ok = new Set(['B', 'I', 'U', 'S', 'STRIKE', 'STRONG', 'EM', 'BR', 'DIV', 'SPAN', 'P', 'UL', 'OL', 'LI', 'IMG', 'A', 'H1', 'H2', 'H3', 'BLOCKQUOTE']);
+    (function walk(node) {
+      [...node.children].forEach(ch => {
+        walk(ch);
+        if (!ok.has(ch.tagName)) {
+          const frag = document.createDocumentFragment();
+          [...ch.childNodes].forEach(n => frag.appendChild(n));
+          ch.replaceWith(frag);
+          return;
+        }
+        [...ch.attributes].forEach(a => {
+          const n = a.name.toLowerCase();
+          if (n === 'style' || n === 'class' || n === 'contenteditable') return;
+          ch.removeAttribute(a.name);
+        });
+        if (ch.tagName === 'IMG') {
+          const src = ch.getAttribute('src') || '';
+          if (!src.startsWith('attach://') && !src.startsWith('data:image/')) ch.remove();
+        }
+        if (ch.tagName === 'A') {
+          const href = ch.getAttribute('href') || '';
+          if (!/^https?:/i.test(href)) ch.removeAttribute('href');
+          else { ch.setAttribute('target', '_blank'); ch.setAttribute('rel', 'noopener noreferrer'); }
+        }
+      });
+    })(tpl);
+    return tpl.innerHTML;
+  }
+  function bindSanitizedPaste(el, onChange) {
+    el.addEventListener('paste', e => {
+      e.preventDefault();
+      const html = e.clipboardData && e.clipboardData.getData('text/html');
+      if (html) {
+        document.execCommand('insertHTML', false, sanitizeHtml(html));
+      } else {
+        const text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+        document.execCommand('insertText', false, text);
+      }
+      onChange && onChange();
+    });
+  }
+
+  window.UI = { showMenu, closeMenu, toast, confirmBox, promptBox, dropdown, ICONS, checklist, sanitizeHtml, bindSanitizedPaste, expand: (r, f, t) => R.expand(r, f, t), fixAttach, weekdayCN, repeatText, fmtTime, plainText, uid, pad2, ymd, WEEK };
 })();

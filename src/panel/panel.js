@@ -173,7 +173,15 @@ function renderList() {
     bindNoteEvents(list);
   }
 }
-function render() { renderSide(); renderList(); renderChrome(); }
+function render() {
+  try {
+    renderSide(); renderList(); renderChrome();
+  } catch (err) {
+    // 单点渲染异常不再冻结整个面板：保留上次界面，记录错误
+    console.error('render fail:', err);
+    if (!render.__errShown) { render.__errShown = true; try { UI.toast('界面刷新出错，请重启应用'); } catch (e) {} }
+  }
+}
 
 function noteItemHTML(it) {
   const colorMap = { default: '#5a6b7e', yellow: '#f5c451', green: '#86e3b4', pink: '#ff9fce', purple: '#c7a7ff', blue: '#8fc7ff', gray: '#aab4be', dark: '#5a6b7e', teal: '#7fd8e8' };

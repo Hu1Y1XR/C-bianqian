@@ -75,6 +75,7 @@ function bind() {
   body.addEventListener('input', save);
   // 清单模式：逐行勾选框（勾选 → 橙色✓ + 该行文字变灰划线）
   UI.checklist.bind(body, () => save());
+  UI.bindSanitizedPaste(body, () => save());
   $('btnChecklist').onclick = () => {
     UI.checklist.toggle(body);
     $('btnChecklist').classList.toggle('act', UI.checklist.inside(body));

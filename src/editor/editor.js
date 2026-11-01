@@ -233,7 +233,7 @@ async function saveOne(keepOpen) {
   const item = collect();
   if (!item) { UI.toast('请输入内容'); return; }
   await api.upsertItem(JSON.parse(JSON.stringify(item)));
-  for (const name of pendingDel) api.deleteAttachment(name);
+  for (const name of pendingDel) api.deleteAttachment(name, item.id);
   pendingDel = [];
   UI.toast('保存成功');
   if (keepOpen) {
@@ -274,6 +274,7 @@ function bind() {
   $('btnSave').onclick = () => saveOne(false);
   $('btnSaveMore').onclick = () => saveOne(true);
   body.addEventListener('input', count);
+  UI.bindSanitizedPaste(body, () => count());
   document.querySelectorAll('.ed-toolbar .tb[data-cmd]').forEach(b => {
     b.addEventListener('mousedown', e => e.preventDefault());
     b.addEventListener('click', () => { document.execCommand(b.dataset.cmd, false, null); body.focus(); });
