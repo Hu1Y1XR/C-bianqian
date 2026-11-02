@@ -433,8 +433,13 @@ ipcMain.handle('trash:purge', (e, deletedAt) => {
   sync(); return { ok: true };
 });
 ipcMain.handle('trash:clear', () => {
-  for (const entry of state.trash) for (const n of itemAttachmentNames(entry.item)) {
-    if (!referencedByOther(n, entry.item.id)) purgeTrashFile(n);
+  // 先收集去重：回收站内多条可能引用同一文件，逐条判断会互相豁免导致永不删除
+  const names = new Set();
+  for (const entry of state.trash) for (const n of itemAttachmentNames(entry.item)) names.add(n);
+  for (const n of names) {
+    // 回收站将整体清空，只需确认活跃条目是否仍引用
+    const liveUsed = state.items.some(it => itemAttachmentNames(it).includes(n));
+    if (!liveUsed) purgeTrashFile(n);
   }
   state.trash = [];
   sync(); return { ok: true };
@@ -488,6 +493,9 @@ function createTray() {
   tray.on('click', showMain);
 }
 
+// Windows：通知归属与任务栏分组依赖 AppUserModelId，必须在创建窗口前设置
+if (process.platform === 'win32') app.setAppUserModelId('com.cbianqian.app');
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) { app.quit(); } else {
   app.on('second-instance', showMain);
@@ -507,6 +515,7 @@ if (!gotLock) { app.quit(); } else {
       };
       setTimeout(() => createWin('main', { x: 430, y: 50 }), 800);
       setTimeout(() => run("switchView('list'); curCatId = 'c_gouwu'; render(); 'gouwu'"), 3000);
+
 
 
     }

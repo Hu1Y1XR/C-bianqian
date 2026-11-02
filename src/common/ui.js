@@ -279,39 +279,9 @@
     }
   };
 
-  /* 粘贴清洗：只放行白名单标签，img 仅限 attach:/data:，a 仅限 http(s)，其余降级为纯文本 */
-  function sanitizeHtml(html) {
-    const tpl = document.createElement('div');
-    tpl.innerHTML = String(html || '');
-    const ok = new Set(['B', 'I', 'U', 'S', 'STRIKE', 'STRONG', 'EM', 'BR', 'DIV', 'SPAN', 'P', 'UL', 'OL', 'LI', 'IMG', 'A', 'H1', 'H2', 'H3', 'BLOCKQUOTE']);
-    (function walk(node) {
-      [...node.children].forEach(ch => {
-        walk(ch);
-        if (!ok.has(ch.tagName)) {
-          const frag = document.createDocumentFragment();
-          [...ch.childNodes].forEach(n => frag.appendChild(n));
-          ch.replaceWith(frag);
-          return;
-        }
-        [...ch.attributes].forEach(a => {
-          const n = a.name.toLowerCase();
-          if (n === 'style' || n === 'class' || n === 'contenteditable') return;
-          ch.removeAttribute(a.name);
-        });
-        if (ch.tagName === 'IMG') {
-          const src = ch.getAttribute('src') || '';
-          if (!src.startsWith('attach://') && !src.startsWith('data:image/')) ch.remove();
-        }
-        if (ch.tagName === 'A') {
-          const href = ch.getAttribute('href') || '';
-          if (!/^https?:/i.test(href)) ch.removeAttribute('href');
-          else { ch.setAttribute('target', '_blank'); ch.setAttribute('rel', 'noopener noreferrer'); }
-        }
-      });
-    })(tpl);
-    return tpl.innerHTML;
-  }
-  function bindSanitizedPaste(el, onChange) {
+  /* 粘贴清洗：具体规则在 src/common/sanitize.js（页面需先加载），此处仅转发 */
+  const sanitizeHtml = (html) => (window.Sanitize ? window.Sanitize.sanitizeHtml(html) : String(html || '').replace(/<[^>]*>/g, ''));
+    function bindSanitizedPaste(el, onChange) {
     el.addEventListener('paste', e => {
       e.preventDefault();
       const html = e.clipboardData && e.clipboardData.getData('text/html');
