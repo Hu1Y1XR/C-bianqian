@@ -1,7 +1,7 @@
 {
   "name": "fusion-notes",
   "productName": "C便签",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "C便签 · 本地便签/待办/日历应用",
   "main": "main.js",
   "scripts": {

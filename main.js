@@ -400,6 +400,18 @@ ipcMain.handle('attachment:add', (e, srcPath) => {
     return { name: path.basename(dest), path: dest };
   } catch (err) { return { error: String(err) }; }
 });
+ipcMain.handle('attachment:addBuffer', (e, { name, buffer }) => {
+  try {
+    fs.mkdirSync(ATT_DIR(), { recursive: true });
+    const rawExt = path.extname(name || '').toLowerCase() || '.png';
+    const ext = /^\.(png|jpe?g|gif|webp|bmp)$/.test(rawExt) ? rawExt : '.png';
+    const base = path.basename(name || 'image', rawExt).replace(/[^\w一-龥-]/g, '_').slice(0, 40) || 'image';
+    const fname = crypto.randomBytes(4).toString('hex') + '_' + base + ext;
+    const dest = path.join(ATT_DIR(), fname);
+    fs.writeFileSync(dest, Buffer.from(buffer));
+    return { name: fname, path: dest };
+  } catch (err) { return { error: String(err) }; }
+});
 ipcMain.handle('attachment:delete', (e, { name, exceptId }) => {
   if (referencedByOther(name, exceptId)) return { ok: true, skipped: true }; // 仍被引用，只解除自身引用关系
   const p = attPathByName(name);
@@ -515,6 +527,7 @@ if (!gotLock) { app.quit(); } else {
       };
       setTimeout(() => createWin('main', { x: 430, y: 50 }), 800);
       setTimeout(() => run("switchView('list'); curCatId = 'c_gouwu'; render(); 'gouwu'"), 3000);
+
 
 
 

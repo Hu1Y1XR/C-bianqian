@@ -281,18 +281,84 @@
 
   /* 粘贴清洗：具体规则在 src/common/sanitize.js（页面需先加载），此处仅转发 */
   const sanitizeHtml = (html) => (window.Sanitize ? window.Sanitize.sanitizeHtml(html) : String(html || '').replace(/<[^>]*>/g, ''));
-    function bindSanitizedPaste(el, onChange) {
-    el.addEventListener('paste', e => {
+    /* 粘贴：图片（Win+Shift+S 截图 / 右键复制图片）存为附件再插入；文本走白名单清洗
+     异步保存后需要恢复选区，否则 execCommand 会插到错误位置或失效 */
+  function bindSanitizedPaste(el, onChange) {
+    const saveRange = () => {
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return null;
+      const r = sel.getRangeAt(0);
+      return { sc: r.startContainer, so: r.startOffset, ec: r.endContainer, eo: r.endOffset };
+    };
+    const restoreRange = saved => {
+      el.focus();
+      if (!saved) { placeCaretAtEnd(el); return; }
+      try {
+        const r = document.createRange();
+        r.setStart(saved.sc, saved.so);
+        r.setEnd(saved.ec, saved.eo);
+        const sel = window.getSelection();
+        sel.removeAllRanges(); sel.addRange(r);
+      } catch (e) { placeCaretAtEnd(el); }
+    };
+    el.addEventListener('paste', async e => {
+      const cd = e.clipboardData;
+      if (!cd) return;
+      const items = cd.items ? [...cd.items] : [];
+      const imgItem = items.find(it => it.kind === 'file' && /^image\//.test(it.type));
+      const html = (cd.getData('text/html') || '').trim();
+      const text = cd.getData('text/plain') || '';
+      // 截图/复制图片：优先按图片处理（此时通常没有 html 文本内容）
+      if (imgItem && !html) {
+        e.preventDefault();
+        const saved = saveRange();
+        const file = imgItem.getAsFile();
+        if (!file) return;
+        try {
+          const buf = await file.arrayBuffer();
+          const ext = (file.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+          const savedAtt = await api.addAttachmentBuffer('image.' + ext, buf);
+          if (savedAtt && savedAtt.name) {
+            restoreRange(saved);
+            document.execCommand('insertHTML', false,
+              `<img src="attach://${encodeURIComponent(savedAtt.name)}">`);
+          } else if (savedAtt && savedAtt.error) {
+            toast('图片保存失败：' + savedAtt.error);
+          }
+        } catch (err) {
+          toast('图片粘贴失败');
+        }
+        onChange && onChange();
+        return;
+      }
       e.preventDefault();
-      const html = e.clipboardData && e.clipboardData.getData('text/html');
       if (html) {
         document.execCommand('insertHTML', false, sanitizeHtml(html));
-      } else {
-        const text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+      } else if (text) {
         document.execCommand('insertText', false, text);
+      } else if (imgItem) {
+        // 兜底：html 为空但有图片项（部分应用会带空 html）
+        const file = imgItem.getAsFile();
+        if (file) {
+          const buf = await file.arrayBuffer();
+          const ext = (file.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+          const savedAtt = await api.addAttachmentBuffer('image.' + ext, buf);
+          if (savedAtt && savedAtt.name) {
+            el.focus();
+            document.execCommand('insertHTML', false,
+              `<img src="attach://${encodeURIComponent(savedAtt.name)}">`);
+          }
+        }
       }
       onChange && onChange();
     });
+  }
+  function placeCaretAtEnd(el) {
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    r.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(r);
   }
 
   window.UI = { showMenu, closeMenu, toast, confirmBox, promptBox, dropdown, ICONS, checklist, sanitizeHtml, bindSanitizedPaste, expand: (r, f, t) => R.expand(r, f, t), fixAttach, weekdayCN, repeatText, fmtTime, plainText, uid, pad2, ymd, WEEK };

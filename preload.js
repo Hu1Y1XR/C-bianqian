@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('api', {
   reorderCategories: ids => ipcRenderer.invoke('category:reorder', { ids }),
   setSettings: patch => ipcRenderer.invoke('settings:set', patch),
   addAttachment: p => ipcRenderer.invoke('attachment:add', p),
+  addAttachmentBuffer: (name, buffer) => ipcRenderer.invoke('attachment:addBuffer', { name, buffer }),
   deleteAttachment: (name, exceptId) => ipcRenderer.invoke('attachment:delete', { name, exceptId }),
   trashRestore: deletedAt => ipcRenderer.invoke('trash:restore', deletedAt),
   trashPurge: deletedAt => ipcRenderer.invoke('trash:purge', deletedAt),
