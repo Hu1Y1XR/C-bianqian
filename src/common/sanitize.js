@@ -27,6 +27,65 @@
   const BAD_STYLE_DECL = /(position|z-index|behavior|-moz-binding|expression|content\s*:)/i;
   const IMG_SRC_OK = /^(attach:\/\/|data:image\/(png|jpe?g|gif|webp|bmp|avif);base64,)/i;
 
+  /* 大小写不敏感取属性：某些解析路径可能保留 <IMG SRC> 大写，
+     getAttribute('src') 取不到时按小写名在 attributes 里回查 */
+  function attr(el, name) {
+    const v = el.getAttribute(name);
+    if (v !== null && v !== undefined) return v;
+    const lower = String(name).toLowerCase();
+    const list = el.attributes ? [...el.attributes] : [];
+    for (const a of list) {
+      if (String(a.name).toLowerCase() === lower) return a.value;
+    }
+    return null;
+  }
+  function removeAttr(el, name) {
+    el.removeAttribute(name);
+    const lower = String(name).toLowerCase();
+    const list = el.attributes ? [...el.attributes] : [];
+    for (const a of list) {
+      if (String(a.name).toLowerCase() === lower) el.removeAttribute(a.name);
+    }
+  }
+
+  /* 属性规范化：统一小写名并按固定顺序重排。
+     目的：jsdom 与 linkedom 的序列化行为不同（linkedom 保留原始大小写、setAttribute 前插），
+     规范化后两个解析器对同一输入产出逐字节一致的 HTML */
+  const ATTR_ORDER = ['src', 'alt', 'width', 'height', 'href', 'target', 'rel', 'style', 'contenteditable', 'class'];
+  const appendModeCache = new WeakMap();
+  function isAppendMode(doc) {
+    if (appendModeCache.has(doc)) return appendModeCache.get(doc);
+    let append = true;
+    try {
+      const probe = doc.createElement('div');
+      probe.setAttribute('a', '1');
+      probe.setAttribute('b', '2');
+      const first = [...probe.attributes][0];
+      append = !!first && String(first.name) === 'a';
+    } catch (e) { append = true; }
+    appendModeCache.set(doc, append);
+    return append;
+  }
+  function rank(name) { const i = ATTR_ORDER.indexOf(name); return i < 0 ? 99 : i; }
+  function normalizeAttributes(el, doc) {
+    const list = el.attributes ? [...el.attributes] : [];
+    if (!list.length) return;
+    const seen = new Set();
+    const uniq = [];
+    for (const a of list) {
+      const n = String(a.name).toLowerCase();
+      if (seen.has(n)) continue;
+      seen.add(n);
+      uniq.push([n, a.value]);
+    }
+    uniq.sort((x, y) => rank(x[0]) - rank(y[0]));
+    const alreadyNormal = list.length === uniq.length && list.every((a, i) => String(a.name) === uniq[i][0]);
+    if (alreadyNormal) return;
+    list.forEach(a => el.removeAttribute(a.name));
+    const seq = isAppendMode(doc) ? uniq : uniq.slice().reverse();
+    for (const [n, v] of seq) el.setAttribute(n, v);
+  }
+
   function sanitizeStyle(value) {
     if (!value) return '';
     return String(value)
@@ -63,9 +122,9 @@
         walk(ch);
 
         // 3) 先读关键属性并校验（必须在剥离之前）
-        const src = tag === 'IMG' ? (ch.getAttribute('src') || '') : null;
-        const href = tag === 'A' ? (ch.getAttribute('href') || '') : null;
-        const styleRaw = ch.getAttribute('style');
+        const src = tag === 'IMG' ? (attr(ch, 'src') || '') : null;
+        const href = tag === 'A' ? (attr(ch, 'href') || '') : null;
+        const styleRaw = attr(ch, 'style');
 
         if (tag === 'IMG' && !IMG_SRC_OK.test(src)) { ch.remove(); return; }
         if (tag === 'A' && href !== null && !/^https?:\/\//i.test(href)) {
@@ -83,8 +142,8 @@
         [...ch.attributes].forEach(a => {
           const n = a.name.toLowerCase();
           if (allow.includes(n)) return;
-          if (n === 'class' && /^(ck-(item|box|text)( done)?|done)$/.test((ch.getAttribute('class') || '').trim())) return;
-          if (n === 'contenteditable' && (ch.getAttribute('contenteditable') || '') === 'false') return;
+          if (n === 'class' && /^(ck-(item|box|text)( done)?|done)$/.test((attr(ch, 'class') || '').trim())) return;
+          if (n === 'contenteditable' && (attr(ch, 'contenteditable') || '') === 'false') return;
           ch.removeAttribute(a.name);
         });
 
@@ -92,18 +151,21 @@
         if (styleRaw) {
           const clean = sanitizeStyle(styleRaw);
           if (clean) ch.setAttribute('style', clean);
-          else ch.removeAttribute('style');
+          else removeAttr(ch, 'style');
         }
         if (tag === 'A') {
           ch.setAttribute('target', '_blank');
           ch.setAttribute('rel', 'noopener noreferrer');
         }
         if (tag === 'IMG') {
-          const w = ch.getAttribute('width');
-          const h = ch.getAttribute('height');
-          if (w && !/^\d{1,5}$/.test(w)) ch.removeAttribute('width');
-          if (h && !/^\d{1,5}$/.test(h)) ch.removeAttribute('height');
+          const w = attr(ch, 'width');
+          const h = attr(ch, 'height');
+          if (w && !/^\d{1,5}$/.test(w)) removeAttr(ch, 'width');
+          if (h && !/^\d{1,5}$/.test(h)) removeAttr(ch, 'height');
         }
+
+        // 6) 属性名小写化 + 固定顺序，保证不同 DOM 实现序列化一致
+        normalizeAttributes(ch, d);
       });
     })(tpl);
 

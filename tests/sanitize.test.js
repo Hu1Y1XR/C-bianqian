@@ -96,12 +96,13 @@ t('普通 class 仍被剥离（特例只限 ck-*）', () => {
 });
 t('主进程 linkedom 路径与渲染层结果一致', () => {
   const { parseHTML } = require('linkedom');
-  const { document } = parseHTML('<div></div>');
-  const html = '<div>保<b>粗</b><img src="attach://a.png"><script>alert(1)<\/script><a href="javascript:alert(1)">坏链</a></div>';
-  const domOut = Sanitize.sanitizeHtml(html, doc);
-  assert.ok(domOut.includes('<b>粗</b>'), domOut);
-  assert.ok(domOut.includes('attach://a.png'), domOut);
-  assert.ok(!/script|javascript/i.test(domOut), domOut);
+  const { document: ldoc } = parseHTML('<html><body></body></html>'); // 主进程实际使用的解析器
+  for (const html of ['<div><b>粗</b><img src="attach://a.png"></div>', '<IMG SRC="attach://a.png">']) {
+    const rendererOut = Sanitize.sanitizeHtml(html, doc);   // jsdom：渲染层
+    const mainOut = Sanitize.sanitizeHtml(html, ldoc);      // linkedom：主进程
+    assert.strictEqual(mainOut, rendererOut, '两解析器输出不一致：' + html);
+    assert.ok(mainOut.includes('<img'), '图片应保留：' + mainOut);
+  }
 });
 t('空/undefined 输入安全', () => {
   assert.strictEqual(clean(''), '');
