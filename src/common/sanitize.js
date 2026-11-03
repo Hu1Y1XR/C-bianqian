@@ -77,10 +77,14 @@
         }
 
         // 4) 属性白名单剥离（此时关键属性已读完，删掉也不影响判断）
+        //    特例：清单结构（ck-item/ck-box/ck-text + contenteditable=false）必须保留，
+        //    否则用户在便签之间复制粘贴清单时会破坏勾选框结构
         const allow = ATTR_ALLOW[tag] || ATTR_ALLOW._default;
         [...ch.attributes].forEach(a => {
           const n = a.name.toLowerCase();
           if (allow.includes(n)) return;
+          if (n === 'class' && /^(ck-(item|box|text)( done)?|done)$/.test((ch.getAttribute('class') || '').trim())) return;
+          if (n === 'contenteditable' && (ch.getAttribute('contenteditable') || '') === 'false') return;
           ch.removeAttribute(a.name);
         });
 

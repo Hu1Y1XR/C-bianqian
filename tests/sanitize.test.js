@@ -84,6 +84,25 @@ t('javascript: 链接降级为纯文本', () => {
   assert.ok(!/<a/i.test(out), out);
   assert.ok(out.includes('点我'), out);
 });
+t('清单结构在粘贴清洗中保留（ck-item/ck-box/contenteditable=false）', () => {
+  const out = clean('<div class="ck-item done"><span class="ck-box" contenteditable="false"></span><span class="ck-text">买菜</span></div>');
+  assert.ok(out.includes('class="ck-item done"'), out);
+  assert.ok(out.includes('contenteditable="false"'), out);
+  assert.ok(out.includes('ck-text'), out);
+});
+t('普通 class 仍被剥离（特例只限 ck-*）', () => {
+  const out = clean('<div class="some-random-class">文字</div>');
+  assert.ok(!/some-random-class/.test(out), out);
+});
+t('主进程 linkedom 路径与渲染层结果一致', () => {
+  const { parseHTML } = require('linkedom');
+  const { document } = parseHTML('<div></div>');
+  const html = '<div>保<b>粗</b><img src="attach://a.png"><script>alert(1)<\/script><a href="javascript:alert(1)">坏链</a></div>';
+  const domOut = Sanitize.sanitizeHtml(html, doc);
+  assert.ok(domOut.includes('<b>粗</b>'), domOut);
+  assert.ok(domOut.includes('attach://a.png'), domOut);
+  assert.ok(!/script|javascript/i.test(domOut), domOut);
+});
 t('空/undefined 输入安全', () => {
   assert.strictEqual(clean(''), '');
   assert.strictEqual(clean(null), '');

